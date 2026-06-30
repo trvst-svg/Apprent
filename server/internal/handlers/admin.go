@@ -1,0 +1,150 @@
+package handlers
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	"server/internal/database"
+	"server/internal/models"
+
+	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/v2/bson"
+)
+
+type AdminHandler struct{}
+
+func NewAdminHandler() *AdminHandler {
+	return &AdminHandler{}
+}
+
+type MetricSummary struct {
+	TotalUsers     int64            `json:"totalUsers"`
+	UsersByRole    map[string]int64 `json:"usersByRole"`
+	TotalStreams   int64            `json:"totalStreams"`
+	StreamsByStatus map[string]int64 `json:"streamsByStatus"`
+	TotalRevenue   float64          `json:"totalRevenue"`
+	TotalBookings  int64            `json:"totalBookings"`
+	TotalChallenges int64           `json:"totalChallenges"`
+}
+
+func (h *AdminHandler) GetSystemMetrics(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	usersColl := database.GetCollection("users")
+	streamsColl := database.GetCollection("streams")
+	bookingsColl := database.GetCollection("bookings")
+	challengesColl := database.GetCollection("sandbox_challenges")
+
+	// 1. Total Users
+	totalUsers, err := usersColl.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count users"})
+		return
+	}
+
+	// 2. Users by Role
+	usersByRole := make(map[string]int64)
+	for _, role := range []models.UserRole{models.RoleLearner, models.RoleExpert, models.RoleAdmin} {
+		count, _ := usersColl.CountDocuments(ctx, bson.M{"role": role})
+		usersByRole[string(role)] = count
+	}
+
+	// 3. Total Streams
+	totalStreams, err := streamsColl.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count streams"})
+		return
+	}
+
+	// 4. Streams by Status
+	streamsByStatus := make(map[string]int64)
+	for _, status := range []models.StreamStatus{models.StreamScheduled, models.StreamLive, models.StreamEnded, models.StreamRecorded} {
+		count, _ := streamsColl.CountDocuments(ctx, bson.M{"status": status})
+		streamsByStatus[string(status)] = count
+	}
+
+	// 5. Total Bookings
+	totalBookings, err := bookingsColl.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		totalBookings = 0
+	}
+
+	// 6. Total Revenue (Aggregate Sum of paidAmount from bookings)
+	pipeline := bson.A{
+		bson.D{{Key: "$match", Value: bson.D{{Key: "status", Value: "confirmed"}}}},
+		bson.D{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: nil},
+			{Key: "total", Value: bson.D{{Key: "$sum", Value: "$paidAmount"}}},
+		}}},
+	}
+	cursor, err := bookingsColl.Aggregate(ctx, pipeline)
+	var totalRevenue float64 = 0
+	if err == nil {
+		type RevenueResult struct {
+			Total float64 `bson:"total"`
+		}
+		var results []RevenueResult
+		if err := cursor.All(ctx, &results); err == nil && len(results) > 0 {
+			totalRevenue = results[0].Total
+		}
+	}
+
+	// 7. Total Sandbox Challenges
+	totalChallenges, _ := challengesColl.CountDocuments(ctx, bson.M{})
+
+	summary := MetricSummary{
+		TotalUsers:      totalUsers,
+		UsersByRole:     usersByRole,
+		TotalStreams:    totalStreams,
+		StreamsByStatus: streamsByStatus,
+		TotalRevenue:    totalRevenue,
+		TotalBookings:   totalBookings,
+		TotalChallenges: totalChallenges,
+	}
+
+	c.JSON(http.StatusOK, summary)
+}
+
+func (h *AdminHandler) GetUsersList(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	usersColl := database.GetCollection("users")
+	cursor, err := usersColl.Find(ctx, bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var users []models.User
+	if err := cursor.All(ctx, &users); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode users"})
+		return
+	}
+
+	c.JSON(http.StatusOK, users)
+}
+
+func (h *AdminHandler) GetStreamsList(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	streamsColl := database.GetCollection("streams")
+	cursor, err := streamsColl.Find(ctx, bson.M{})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch streams"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var streams []models.Stream
+	if err := cursor.All(ctx, &streams); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode streams"})
+		return
+	}
+
+	c.JSON(http.StatusOK, streams)
+}
