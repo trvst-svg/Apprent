@@ -1,0 +1,32 @@
+# Node / React / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Go
+server/tmp/
+server/main
+server/.env
+*.exe
+*.test
+*.prof
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+Thumbs.db
