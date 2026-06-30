@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: shadowme-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - shadowme-network
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: shadowme-go-server
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - MONGO_URI=mongodb://mongodb:27017
+      - DB_NAME=shadowme
+      - JWT_SECRET=super_secret_shadowme_jwt_key_2026
+      - AI_BACKEND_URL=http://ai:8000
+      - ENV=development
+    depends_on:
+      - mongodb
+    networks:
+      - shadowme-network
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: shadowme-next-client
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8080
+    depends_on:
+      - server
+    networks:
+      - shadowme-network
+
+volumes:
+  mongo-data:
+
+networks:
+  shadowme-network:
+    driver: bridge
