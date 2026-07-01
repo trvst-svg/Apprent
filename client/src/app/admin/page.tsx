@@ -29,11 +29,20 @@ interface UserLog {
   createdAt: string;
 }
 
+interface AnalyticsData {
+  totalRegistrations: number;
+  uniqueVisits: number;
+  pathInterests: Array<{ pathId: string; clicks: number }>;
+  languagesToLearn: Array<{ language: string; count: number }>;
+  timestamp: string;
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const { user, token, logout } = useAuth();
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [users, setUsers] = useState<UserLog[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,12 +61,14 @@ export default function AdminDashboard() {
 
   const fetchAdminData = async () => {
     try {
-      const [m, u] = await Promise.all([
+      const [m, u, a] = await Promise.all([
         apiFetch<AdminMetrics>('/api/v1/admin/metrics', { token: token || undefined }),
         apiFetch<UserLog[]>('/api/v1/admin/users', { token: token || undefined }),
+        apiFetch<AnalyticsData>('/api/v1/admin/analytics', { token: token || undefined }).catch(() => null),
       ]);
       setMetrics(m);
       setUsers(u);
+      setAnalytics(a);
     } catch (err) {
       console.error('Failed to load admin data:', err);
     } finally {
@@ -103,7 +114,7 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-2">
           <Terminal className="h-6 w-6 text-violet-500" />
           <span className="font-bold tracking-wider text-zinc-100 uppercase">
-            Shadow<span className="text-violet-500">Me</span> <span className="text-xs text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded ml-2 font-mono">ADMIN</span>
+            Appr<span className="text-violet-500">ent</span> <span className="text-xs text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded ml-2 font-mono">ADMIN</span>
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -117,48 +128,70 @@ export default function AdminDashboard() {
       {/* Main Workspace */}
       <main className="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
         {/* Metric Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <Card className="bg-zinc-900/60 border-zinc-800 text-zinc-100">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-400">Total Registered Users</CardTitle>
-              <Users className="h-5 w-5 text-violet-400" />
+              <CardTitle className="text-xs font-medium text-zinc-400">Total Registered</CardTitle>
+              <Users className="h-4 w-4 text-violet-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-extrabold text-white">{metrics?.totalUsers}</div>
-              <p className="text-xs text-zinc-500 mt-1">Learners & Experts</p>
+              <div className="text-2xl font-extrabold text-white">{metrics?.totalUsers || 0}</div>
+              <p className="text-[10px] text-zinc-500 mt-1">Learners & Experts</p>
             </CardContent>
           </Card>
 
           <Card className="bg-zinc-900/60 border-zinc-800 text-zinc-100">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-400">Apprenticeship Streams</CardTitle>
-              <Video className="h-5 w-5 text-indigo-400" />
+              <CardTitle className="text-xs font-medium text-zinc-400">Unique Site Visits</CardTitle>
+              <Activity className="h-4 w-4 text-emerald-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-extrabold text-white">{metrics?.totalStreams}</div>
-              <p className="text-xs text-zinc-500 mt-1">{metrics?.streamsByStatus.live || 0} active live streaming</p>
+              <div className="text-2xl font-extrabold text-white">{analytics?.uniqueVisits || 0}</div>
+              <p className="text-[10px] text-zinc-500 mt-1">Unique IP logs</p>
             </CardContent>
           </Card>
 
           <Card className="bg-zinc-900/60 border-zinc-800 text-zinc-100">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-400">Total Platform Bookings</CardTitle>
-              <BookOpen className="h-5 w-5 text-purple-400" />
+              <CardTitle className="text-xs font-medium text-zinc-400">Apprenticeship Streams</CardTitle>
+              <Video className="h-4 w-4 text-indigo-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-extrabold text-white">{metrics?.totalBookings}</div>
-              <p className="text-xs text-zinc-500 mt-1">{metrics?.totalChallenges || 0} coding challenges ready</p>
+              <div className="text-2xl font-extrabold text-white">{metrics?.totalStreams}</div>
+              <p className="text-[10px] text-zinc-500 mt-1">{metrics?.streamsByStatus.live || 0} active live streaming</p>
             </CardContent>
           </Card>
 
           <Card className="bg-zinc-900/60 border-zinc-800 text-zinc-100">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-zinc-400">Gross Booking Revenue</CardTitle>
-              <DollarSign className="h-5 w-5 text-emerald-400" />
+              <CardTitle className="text-xs font-medium text-zinc-400">Total Bookings</CardTitle>
+              <BookOpen className="h-4 w-4 text-purple-400" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-extrabold text-white">${metrics?.totalRevenue.toFixed(2)}</div>
-              <p className="text-xs text-zinc-500 mt-1">Processed securely via Stripe mock</p>
+              <div className="text-2xl font-extrabold text-white">{metrics?.totalBookings}</div>
+              <p className="text-[10px] text-zinc-500 mt-1">{metrics?.totalChallenges || 0} challenges</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-zinc-900/60 border-zinc-800 text-zinc-100">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium text-zinc-400">Gross Booking Revenue</CardTitle>
+              <DollarSign className="h-4 w-4 text-emerald-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-extrabold text-white">${metrics?.totalRevenue.toFixed(2)}</div>
+              <p className="text-[10px] text-zinc-500 mt-1">Processed securely</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-zinc-900/60 border-zinc-800 text-zinc-100">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-xs font-medium text-zinc-400">Onboarding Queries</CardTitle>
+              <Terminal className="h-4 w-4 text-amber-400" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-extrabold text-white">{analytics?.totalRegistrations || metrics?.totalUsers || 0}</div>
+              <p className="text-[10px] text-zinc-500 mt-1">Onboarding completions</p>
             </CardContent>
           </Card>
         </div>
@@ -194,6 +227,55 @@ export default function AdminDashboard() {
                   <Line type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={3} />
                 </LineChart>
               </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Advanced Telemetry & Onboarding Interest Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="bg-zinc-900/60 border-zinc-800 text-zinc-100">
+            <CardHeader>
+              <CardTitle className="text-lg">Languages Learners Want to Learn</CardTitle>
+              <CardDescription className="text-zinc-400">Aggregated from onboarding questionnaire survey answers</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[250px] w-full">
+              {analytics?.languagesToLearn && analytics.languagesToLearn.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analytics.languagesToLearn}>
+                    <XAxis dataKey="language" stroke="#71717a" />
+                    <YAxis stroke="#71717a" />
+                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', color: '#fff' }} />
+                    <Bar dataKey="count" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
+                  No onboarding languages logged yet.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-zinc-900/60 border-zinc-800 text-zinc-100">
+            <CardHeader>
+              <CardTitle className="text-lg">Learning Path Interest Clicks</CardTitle>
+              <CardDescription className="text-zinc-400">Top courses tracked via click and interaction analytics</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[250px] w-full">
+              {analytics?.pathInterests && analytics.pathInterests.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analytics.pathInterests}>
+                    <XAxis dataKey="pathId" stroke="#71717a" />
+                    <YAxis stroke="#71717a" />
+                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: '1px solid #27272a', color: '#fff' }} />
+                    <Bar dataKey="clicks" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-zinc-500 text-sm">
+                  No path interest click metrics collected yet.
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
