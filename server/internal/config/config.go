@@ -13,6 +13,7 @@ type Config struct {
 	DBName       string
 	JWTSecret    string
 	AIBackendURL string
+	GeminiAPIKey string
 	Env          string
 }
 
@@ -25,9 +26,10 @@ func LoadConfig() *Config {
 	return &Config{
 		Port:         getEnv("PORT", "8080"),
 		MongoURI:     getEnv("MONGO_URI", "mongodb://localhost:27017"),
-		DBName:       getEnv("DB_NAME", "shadowme"),
-		JWTSecret:    getEnv("JWT_SECRET", "super_secret_shadowme_jwt_key_2026"),
+		DBName:       getEnv("DB_NAME", "apprent"),
+		JWTSecret:    getEnv("JWT_SECRET", "super_secret_apprent_jwt_key_2026"),
 		AIBackendURL: getEnv("AI_BACKEND_URL", "http://localhost:8000"),
+		GeminiAPIKey: getEnv("GEMINI_API_KEY", ""),
 		Env:          getEnv("ENV", "development"),
 	}
 }
