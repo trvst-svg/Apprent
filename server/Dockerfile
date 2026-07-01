@@ -1,5 +1,5 @@
 # Stage 1: Build the binary
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,6 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /app/main .
-COPY --from=builder /app/.env .
 
 EXPOSE 8080
 
