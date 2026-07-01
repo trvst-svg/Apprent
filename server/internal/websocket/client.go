@@ -2,11 +2,13 @@ package websocket
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 )
 
@@ -14,7 +16,7 @@ const (
 	writeWait      = 10 * time.Second
 	pongWait       = 60 * time.Second
 	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 512
+	maxMessageSize = 4096
 )
 
 var upgrader = websocket.Upgrader{
@@ -28,8 +30,8 @@ var upgrader = websocket.Upgrader{
 type Client struct {
 	Hub      *Hub
 	Conn     *websocket.Conn
-	Send     chan []byte
 	UserID   string
+	UserName string
 	StreamID string
 	send     chan []byte
 }
@@ -55,7 +57,9 @@ func (c *Client) ReadPump() {
 		var msg Message
 		if err := json.Unmarshal(messageBytes, &msg); err == nil {
 			msg.Sender = c.UserID
+			msg.SenderName = c.UserName
 			msg.StreamID = c.StreamID
+			msg.Timestamp = time.Now().UnixMilli()
 			c.Hub.broadcast <- msg
 		}
 	}
@@ -101,12 +105,46 @@ func (c *Client) WritePump() {
 	}
 }
 
-func ServeWs(hub *Hub, c *gin.Context) {
+// ServeWs upgrades the connection and authenticates via JWT token
+func ServeWs(hub *Hub, jwtSecret string, c *gin.Context) {
 	streamID := c.Query("streamId")
-	userID := c.Query("userId")
+	tokenString := c.Query("token")
 
-	if streamID == "" || userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "streamId and userId parameters are required"})
+	if streamID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "streamId parameter is required"})
+		return
+	}
+
+	// Authenticate via JWT token query parameter
+	var userID, userName string
+	if tokenString != "" {
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return []byte(jwtSecret), nil
+		})
+
+		if err == nil && token.Valid {
+			if claims, ok := token.Claims.(jwt.MapClaims); ok {
+				if uid, ok := claims["userId"].(string); ok {
+					userID = uid
+				}
+			}
+		}
+	}
+
+	// Fallback to query param userId if no valid token (backward compat for dev)
+	if userID == "" {
+		userID = c.Query("userId")
+	}
+	userName = c.Query("userName")
+	if userName == "" {
+		userName = "Anonymous"
+	}
+
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required for WebSocket"})
 		return
 	}
 
@@ -120,6 +158,7 @@ func ServeWs(hub *Hub, c *gin.Context) {
 		Hub:      hub,
 		Conn:     conn,
 		UserID:   userID,
+		UserName: userName,
 		StreamID: streamID,
 		send:     make(chan []byte, 256),
 	}
