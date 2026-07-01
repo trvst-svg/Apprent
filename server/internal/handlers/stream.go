@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"server/internal/database"
+	"server/internal/middleware"
 	"server/internal/models"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type StreamHandler struct{}
@@ -80,11 +82,28 @@ func (h *StreamHandler) CreateStream(c *gin.Context) {
 }
 
 func (h *StreamHandler) GetStreams(c *gin.Context) {
+	page, limit, search := middleware.GetPaginationParams(c)
+	skip := (page - 1) * limit
+
+	filter := bson.M{}
+	if search != "" {
+		filter["$or"] = bson.A{
+			bson.M{"title": bson.M{"$regex": search, "$options": "i"}},
+			bson.M{"description": bson.M{"$regex": search, "$options": "i"}},
+		}
+	}
+	if status := c.Query("status"); status != "" {
+		filter["status"] = status
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	collection := database.GetCollection("streams")
-	cursor, err := collection.Find(ctx, bson.M{})
+	total, _ := collection.CountDocuments(ctx, filter)
+
+	opts := options.Find().SetSort(bson.D{{Key: "startTime", Value: -1}}).SetSkip(int64(skip)).SetLimit(int64(limit))
+	cursor, err := collection.Find(ctx, filter, opts)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch streams"})
 		return
@@ -97,7 +116,18 @@ func (h *StreamHandler) GetStreams(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, streams)
+	totalPages := int(total) / limit
+	if int(total)%limit != 0 {
+		totalPages++
+	}
+
+	c.JSON(http.StatusOK, models.PaginatedResponse{
+		Data:       streams,
+		Page:       page,
+		Limit:      limit,
+		Total:      total,
+		TotalPages: totalPages,
+	})
 }
 
 func (h *StreamHandler) GetStreamDetails(c *gin.Context) {
@@ -149,7 +179,7 @@ func (h *StreamHandler) StartLiveStream(c *gin.Context) {
 	update := bson.M{
 		"$set": bson.M{
 			"status":   models.StreamLive,
-			"videoUrl": "/streams/" + streamID.Hex() + "/index.m3u8", // Simulating live HLS URL
+			"videoUrl": "/streams/" + streamID.Hex() + "/index.m3u8",
 		},
 	}
 
@@ -158,6 +188,10 @@ func (h *StreamHandler) StartLiveStream(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update stream status"})
 		return
 	}
+
+	// Notify all learners who booked this stream
+	go notifyStreamBookers(streamID, models.NotifStreamLive, "Stream is LIVE! 🔴",
+		"'"+stream.Title+"' is now live. Join now!", "/learner")
 
 	c.JSON(http.StatusOK, gin.H{"message": "Stream is now LIVE", "videoUrl": "/streams/" + streamID.Hex() + "/index.m3u8"})
 }
@@ -198,6 +232,10 @@ func (h *StreamHandler) EndLiveStream(c *gin.Context) {
 		return
 	}
 
+	// Notify bookers
+	go notifyStreamBookers(streamID, models.NotifStreamEnded, "Stream Ended",
+		"'"+stream.Title+"' has ended and is now available as a recording.", "/learner/feed")
+
 	c.JSON(http.StatusOK, gin.H{"message": "Stream has ended and is archived as recorded"})
 }
 
@@ -224,7 +262,7 @@ func (h *StreamHandler) BookStream(c *gin.Context) {
 
 	// Check if already booked
 	var existingBooking models.Booking
-	err = bookingsColl.FindOne(ctx, bson.M{"streamId": streamID, "learnerId": learnerID}).Decode(&existingBooking)
+	err = bookingsColl.FindOne(ctx, bson.M{"streamId": streamID, "learnerId": learnerID, "status": bson.M{"$ne": "cancelled"}}).Decode(&existingBooking)
 	if err == nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "You have already booked this stream"})
 		return
@@ -245,7 +283,38 @@ func (h *StreamHandler) BookStream(c *gin.Context) {
 		return
 	}
 
+	// Notify learner
+	CreateNotification(learnerID, models.NotifBookingConfirmed, "Booking Confirmed ✅",
+		"Your booking has been confirmed.", "/learner")
+
 	c.JSON(http.StatusCreated, booking)
+}
+
+func (h *StreamHandler) CancelBooking(c *gin.Context) {
+	idStr := c.Param("id")
+	streamID, err := bson.ObjectIDFromHex(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid stream ID"})
+		return
+	}
+
+	learnerIDStr, _ := c.Get("userId")
+	learnerID, _ := bson.ObjectIDFromHex(learnerIDStr.(string))
+
+	bookingsColl := database.GetCollection("bookings")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := bookingsColl.UpdateOne(ctx,
+		bson.M{"streamId": streamID, "learnerId": learnerID, "status": "confirmed"},
+		bson.M{"$set": bson.M{"status": models.BookingCancelled}},
+	)
+	if err != nil || result.ModifiedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No active booking found to cancel"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Booking cancelled successfully"})
 }
 
 func (h *StreamHandler) CreateBookmark(c *gin.Context) {
@@ -358,4 +427,26 @@ func (h *StreamHandler) GetExpertPendingCommentaries(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, pendingList)
+}
+
+// notifyStreamBookers sends notifications to all learners who booked a stream
+func notifyStreamBookers(streamID bson.ObjectID, notifType models.NotificationType, title, message, link string) {
+	bookingsColl := database.GetCollection("bookings")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := bookingsColl.Find(ctx, bson.M{"streamId": streamID, "status": "confirmed"})
+	if err != nil {
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var bookings []models.Booking
+	if err := cursor.All(ctx, &bookings); err != nil {
+		return
+	}
+
+	for _, b := range bookings {
+		CreateNotification(b.LearnerID, notifType, title, message, link)
+	}
 }
