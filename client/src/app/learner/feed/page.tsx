@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Volume2, BookOpen, ExternalLink, ChevronUp, ChevronDown, Terminal, Shield } from 'lucide-react';
+import { ChevronLeft, Volume2, BookOpen, ExternalLink, ChevronUp, ChevronDown, Terminal, Shield, Play } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { apiFetch } from '@/lib/api';
 
 interface FeedItem {
   id: string;
@@ -91,13 +93,92 @@ func parse(r io.Reader) {
 
 export default function FeedRoom() {
   const router = useRouter();
+  const [feedItems, setFeedItems] = useState<FeedItem[]>(mockFeedData);
   const [activeIndex, setActiveIndex] = useState(0);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
 
-  const currentItem = mockFeedData[activeIndex];
+  const currentItem = feedItems[activeIndex];
+  const [currentTime, setCurrentTime] = useState(0);
+  const [activeMobileTab, setActiveMobileTab] = useState<'video' | 'info'>('video');
+  const { token } = useAuth();
+
+  useEffect(() => {
+    fetchStreams();
+  }, []);
+
+  useEffect(() => {
+    if (currentItem && currentItem.commentaries.length === 0 && !currentItem.id.startsWith('f')) {
+      fetchCommentaries(currentItem.id);
+    }
+  }, [activeIndex, feedItems]);
+
+  const fetchStreams = async () => {
+    try {
+      const res = await apiFetch<{ data: any[] }>('/api/v1/streams?status=recorded', { token: token || undefined });
+      if (res.data && res.data.length > 0) {
+        const formatted = res.data.map(s => ({
+          id: s.id,
+          title: s.title,
+          expertName: "Verified Apprent Expert",
+          videoUrl: s.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+          description: s.description,
+          commentaries: [],
+          transcript: ["[0:01] Synced video stream loaded."],
+          snippets: []
+        }));
+        setFeedItems([...formatted, ...mockFeedData]);
+      }
+    } catch (err) {
+      console.error('Failed to load recorded streams for feed:', err);
+    }
+  };
+
+  const fetchCommentaries = async (streamId: string) => {
+    try {
+      const res = await apiFetch<any[]>(`/api/v1/streams/${streamId}/commentaries`, { token: token || undefined });
+      if (res && res.length > 0) {
+        const formatted = res.map(c => ({
+          time: '0:01',
+          note: c.text
+        }));
+        setFeedItems(prev => prev.map(item => item.id === streamId ? { ...item, commentaries: formatted } : item));
+      }
+    } catch (err) {
+      console.error('Failed to load commentaries:', err);
+    }
+  };
+
+  const getSecondsFromTranscript = (text: string): number => {
+    const match = text.match(/\[(\d+):(\d+)\]/);
+    if (match) {
+      const minutes = parseInt(match[1], 10);
+      const seconds = parseInt(match[2], 10);
+      return minutes * 60 + seconds;
+    }
+    return 0;
+  };
+
+  const getSecondsFromTime = (timeStr: string): number => {
+    const parts = timeStr.split(':');
+    if (parts.length === 2) {
+      return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+    }
+    return 0;
+  };
+
+  const jumpToFeedTime = (timeStr: string) => {
+    const id = currentItem.id;
+    const video = videoRefs.current[id];
+    if (video) {
+      const sec = timeStr.includes('[') ? getSecondsFromTranscript(timeStr) : getSecondsFromTime(timeStr);
+      video.currentTime = sec;
+      video.play().catch(() => {});
+      setCurrentTime(sec);
+    }
+  };
 
   const handleNext = () => {
-    if (activeIndex < mockFeedData.length - 1) {
+    if (activeIndex < feedItems.length - 1) {
       pauseAllVideos();
       setActiveIndex(activeIndex + 1);
       playActiveVideo(activeIndex + 1);
@@ -119,7 +200,7 @@ export default function FeedRoom() {
   };
 
   const playActiveVideo = (index: number) => {
-    const id = mockFeedData[index]?.id;
+    const id = feedItems[index]?.id;
     if (id) {
       setTimeout(() => {
         const video = videoRefs.current[id];
@@ -127,6 +208,28 @@ export default function FeedRoom() {
       }, 100);
     }
   };
+
+  // Find active commentary index based on current video time
+  let activeCommentaryIdx = -1;
+  for (let i = 0; i < currentItem.commentaries.length; i++) {
+    const sec = getSecondsFromTime(currentItem.commentaries[i].time);
+    if (currentTime >= sec) {
+      activeCommentaryIdx = i;
+    }
+  }
+
+  // Find active transcript index based on current video time
+  const parsedTranscript = currentItem.transcript.map((line) => {
+    const timeSec = getSecondsFromTranscript(line);
+    return { line, timeSec };
+  });
+
+  let activeTranscriptIdx = -1;
+  for (let i = 0; i < parsedTranscript.length; i++) {
+    if (currentTime >= parsedTranscript[i].timeSec) {
+      activeTranscriptIdx = i;
+    }
+  }
 
   return (
     <div className="flex-1 bg-zinc-950 text-zinc-50 min-h-screen flex flex-col overflow-hidden">
@@ -142,6 +245,30 @@ export default function FeedRoom() {
         </div>
       </header>
 
+      {/* Mobile Tab Selector */}
+      <div className="lg:hidden flex border-b border-zinc-800 bg-zinc-900/50 shrink-0">
+        <button
+          onClick={() => setActiveMobileTab('video')}
+          className={`flex-1 py-3 text-center text-xs font-semibold border-b-2 transition ${
+            activeMobileTab === 'video'
+              ? 'border-violet-500 text-zinc-100 bg-violet-950/10'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Play className="h-3.5 w-3.5 inline mr-1.5" /> Watch Broadcast
+        </button>
+        <button
+          onClick={() => setActiveMobileTab('info')}
+          className={`flex-1 py-3 text-center text-xs font-semibold border-b-2 transition ${
+            activeMobileTab === 'info'
+              ? 'border-violet-500 text-zinc-100 bg-violet-950/10'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Volume2 className="h-3.5 w-3.5 inline mr-1.5" /> Notes & Snippets
+        </button>
+      </div>
+
       {/* Main Container */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
         
@@ -150,13 +277,13 @@ export default function FeedRoom() {
           <Button onClick={handlePrev} disabled={activeIndex === 0} size="icon" className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30">
             <ChevronUp className="h-5 w-5" />
           </Button>
-          <Button onClick={handleNext} disabled={activeIndex === mockFeedData.length - 1} size="icon" className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30">
+          <Button onClick={handleNext} disabled={activeIndex === feedItems.length - 1} size="icon" className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30">
             <ChevronDown className="h-5 w-5" />
           </Button>
         </div>
 
         {/* Left Side: Dynamic vertical TikTok/Reels Video Frame */}
-        <div className="flex-1 flex items-center justify-center p-4 bg-zinc-950 border-r border-zinc-800">
+        <div className={`flex-1 flex items-center justify-center p-4 bg-zinc-950 border-r border-zinc-800 ${activeMobileTab === 'video' ? 'flex' : 'hidden lg:flex'}`}>
           <div className="relative w-full max-w-[400px] aspect-[9/16] bg-zinc-900 rounded-2xl overflow-hidden shadow-2xl border border-zinc-800 flex flex-col justify-end group">
             
             {/* Vertical Video Element */}
@@ -168,6 +295,10 @@ export default function FeedRoom() {
               autoPlay
               muted
               controls
+              onTimeUpdate={(e) => {
+                const video = e.currentTarget;
+                if (video) setCurrentTime(Math.floor(video.currentTime));
+              }}
             />
 
             {/* Simulated Live Privacy Mask */}
@@ -188,7 +319,7 @@ export default function FeedRoom() {
         </div>
 
         {/* Right Side: Sync Information Panels */}
-        <div className="w-full lg:w-[480px] bg-zinc-900/10 flex flex-col overflow-y-auto shrink-0 border-l border-zinc-800/50 p-6 space-y-6">
+        <div className={`w-full lg:w-[480px] bg-zinc-900/10 flex flex-col overflow-y-auto shrink-0 border-l border-zinc-800/50 p-6 space-y-6 ${activeMobileTab === 'info' ? 'flex' : 'hidden lg:flex'}`}>
           
           {/* Audio commentaries */}
           <div className="space-y-3">
@@ -196,12 +327,29 @@ export default function FeedRoom() {
               <Volume2 className="h-4 w-4 text-violet-400" /> Synchronized Expert Notes
             </h4>
             <div className="space-y-2.5">
-              {currentItem.commentaries.map((com, index) => (
-                <div key={index} className="p-3 bg-zinc-900/60 border border-zinc-800 rounded-lg flex items-start gap-2.5">
-                  <span className="text-xs font-mono font-bold text-violet-400 bg-violet-950/40 px-1.5 py-0.5 rounded shrink-0">{com.time}</span>
-                  <p className="text-xs text-zinc-300 leading-relaxed">{com.note}</p>
-                </div>
-              ))}
+              {currentItem.commentaries.map((com, index) => {
+                const isActive = index === activeCommentaryIdx;
+                return (
+                  <div 
+                    key={index} 
+                    onClick={() => jumpToFeedTime(com.time)}
+                    className={`p-3 border rounded-lg flex items-start gap-2.5 cursor-pointer transition-all duration-300 ${
+                      isActive 
+                        ? 'bg-violet-950/20 border-violet-500 shadow-lg shadow-violet-500/5 translate-x-1' 
+                        : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
+                    }`}
+                  >
+                    <span className={`text-xs font-mono font-bold px-1.5 py-0.5 rounded shrink-0 transition-colors ${
+                      isActive 
+                        ? 'text-zinc-50 bg-violet-600' 
+                        : 'text-violet-400 bg-violet-950/40'
+                    }`}>{com.time}</span>
+                    <p className={`text-xs leading-relaxed transition-colors ${
+                      isActive ? 'text-zinc-100 font-medium' : 'text-zinc-300'
+                    }`}>{com.note}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -212,9 +360,22 @@ export default function FeedRoom() {
             </h4>
             <Card className="bg-zinc-950 border-zinc-800 text-zinc-100">
               <CardContent className="p-3 font-mono text-[11px] leading-relaxed text-zinc-400 space-y-1 max-h-[150px] overflow-y-auto">
-                {currentItem.transcript.map((line, idx) => (
-                  <div key={idx} className="hover:text-zinc-200">{line}</div>
-                ))}
+                {currentItem.transcript.map((line, idx) => {
+                  const isActive = idx === activeTranscriptIdx;
+                  return (
+                    <div 
+                      key={idx} 
+                      onClick={() => jumpToFeedTime(line)}
+                      className={`cursor-pointer transition-colors duration-300 py-0.5 px-1 rounded ${
+                        isActive 
+                          ? 'text-violet-400 bg-violet-950/20 font-bold border-l-2 border-violet-500 pl-1.5 shadow-[inset_0_0_8px_rgba(139,92,246,0.05)]' 
+                          : 'hover:text-zinc-200 text-zinc-600'
+                      }`}
+                    >
+                      {line}
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
           </div>
