@@ -77,6 +77,23 @@ export default function FuturisticLandingPage() {
 
   return (
     <div className="flex-1 bg-zinc-950 text-zinc-50 min-h-screen flex flex-col font-sans relative overflow-x-hidden select-none">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Apprent",
+            "url": "https://apprent.dev",
+            "description": "AI-Powered Coding, Interactive Challenges & Stream Mentorship Platform",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://apprent.dev/learner/paths?search={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          })
+        }}
+      />
       
       {/* Background Tech Grids & Neon Radial Shadows */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f1f23_1px,transparent_1px),linear-gradient(to_bottom,#1f1f23_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-[0.25] pointer-events-none" />
@@ -90,7 +107,7 @@ export default function FuturisticLandingPage() {
             <Terminal className="h-5 w-5 text-zinc-50" />
           </div>
           <span className="text-lg font-bold tracking-wider uppercase text-zinc-100 font-sans">
-            Shadow<span className="text-violet-500">Me</span>
+            Appr<span className="text-violet-500">ent</span>
           </span>
           <Badge className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 ml-2 font-mono text-[9px]">
             PROTOCOL V2.4
@@ -126,7 +143,7 @@ export default function FuturisticLandingPage() {
         </h1>
         
         <p className="text-zinc-400 text-base sm:text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
-          Shadow elite engineers in real-time as they solve bugs, compile code, and construct cloud configurations. Replicate their solutions in sandbox environments and trace their commentaries.
+          Apprentice under elite engineers in real-time as they solve bugs, compile code, and construct cloud configurations. Replicate their solutions in sandbox environments and trace their commentaries.
         </p>
 
         <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
@@ -215,7 +232,7 @@ export default function FuturisticLandingPage() {
               </span>
               <h3 className="text-2xl font-bold">Securing Proprietary Workflows</h3>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                ShadowMe runs an inline Computer Vision (CV) model pipeline. It intercepts video frames and detects secrets (API keys, IP addresses, credentials, proprietary logos) and blurs them before they leave the source compiler feed.
+                Apprent runs an inline Computer Vision (CV) model pipeline. It intercepts video frames and detects secrets (API keys, IP addresses, credentials, proprietary logos) and blurs them before they leave the source compiler feed.
               </p>
               <div className="flex gap-2 pt-2">
                 <Button 
@@ -283,7 +300,7 @@ export default function FuturisticLandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-zinc-900 bg-zinc-950 py-8 px-6 text-center text-xs text-zinc-600 relative z-10 shrink-0">
-        <p>© 2026 ShadowMe Inc. All virtual connections encrypted under TLS/SSL protocols.</p>
+        <p>© 2026 Apprent Inc. All virtual connections encrypted under TLS/SSL protocols.</p>
       </footer>
 
       {/* Authentication Portal Dialog Modal */}
