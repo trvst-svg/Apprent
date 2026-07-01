@@ -6,7 +6,7 @@ export interface FetchOptions extends RequestInit {
 }
 
 export async function apiFetch<T = any>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-  const token = options.token || (typeof window !== 'undefined' ? localStorage.getItem('shadowme_token') : null);
+  const token = options.token || (typeof window !== 'undefined' ? localStorage.getItem('apprent_token') : null);
   
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
