@@ -3,38 +3,38 @@ version: '3.8'
 services:
   mongodb:
     image: mongo:latest
-    container_name: shadowme-mongodb
+    container_name: apprent-mongodb
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
     networks:
-      - shadowme-network
+      - apprent-network
 
   server:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: shadowme-go-server
+    container_name: apprent-go-server
     ports:
       - "8080:8080"
     environment:
       - PORT=8080
       - MONGO_URI=mongodb://mongodb:27017
-      - DB_NAME=shadowme
-      - JWT_SECRET=super_secret_shadowme_jwt_key_2026
+      - DB_NAME=apprent
+      - JWT_SECRET=super_secret_apprent_jwt_key_2026
       - AI_BACKEND_URL=http://ai:8000
       - ENV=development
     depends_on:
       - mongodb
     networks:
-      - shadowme-network
+      - apprent-network
 
   client:
     build:
       context: ./client
       dockerfile: Dockerfile
-    container_name: shadowme-next-client
+    container_name: apprent-next-client
     ports:
       - "3000:3000"
     environment:
@@ -43,11 +43,11 @@ services:
     depends_on:
       - server
     networks:
-      - shadowme-network
+      - apprent-network
 
 volumes:
   mongo-data:
 
 networks:
-  shadowme-network:
+  apprent-network:
     driver: bridge
