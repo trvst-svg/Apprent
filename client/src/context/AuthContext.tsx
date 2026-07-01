@@ -16,6 +16,10 @@ interface User {
     company?: string;
     hourlyRate?: number;
     rating?: number;
+    hobbies?: string[];
+    languagesKnown?: string[];
+    languagesToLearn?: string[];
+    onboarded?: boolean;
   };
 }
 
@@ -36,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('shadowme_token');
+    const savedToken = localStorage.getItem('apprent_token');
     if (savedToken) {
       setToken(savedToken);
       fetchProfile(savedToken);
@@ -58,13 +62,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const login = (authToken: string, userData: User) => {
-    localStorage.setItem('shadowme_token', authToken);
+    localStorage.setItem('apprent_token', authToken);
     setToken(authToken);
     setUser(userData);
   };
 
   const logout = () => {
-    localStorage.removeItem('shadowme_token');
+    localStorage.removeItem('apprent_token');
     setToken(null);
     setUser(null);
     setLoading(false);
