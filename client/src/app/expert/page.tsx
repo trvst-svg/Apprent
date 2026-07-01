@@ -47,6 +47,7 @@ export default function ExpertDashboard() {
   const [chTitle, setChTitle] = useState('');
   const [chDesc, setChDesc] = useState('');
   const [chDiff, setChDiff] = useState('intermediate');
+  const [chLang, setChLang] = useState('go');
   const [chCode, setChCode] = useState('');
   const [chTest, setChTest] = useState('');
 
@@ -105,14 +106,18 @@ export default function ExpertDashboard() {
   const handleCreateChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let filePath = 'main.go';
+      if (chLang === 'python') filePath = 'solution.py';
+      if (chLang === 'javascript') filePath = 'solution.js';
+
       await apiFetch('/api/v1/challenges', {
         method: 'POST',
         body: JSON.stringify({
           title: chTitle,
           description: chDesc,
           difficulty: chDiff,
-          files: [{ path: 'main.go', content: chCode }],
-          validation: { type: 'unit_test', scripts: [chTest] },
+          files: [{ path: filePath, content: chCode }],
+          validation: { type: chLang, scripts: [chTest] },
         }),
         token: token || undefined,
       });
@@ -187,7 +192,7 @@ export default function ExpertDashboard() {
         <div className="flex items-center gap-2">
           <Terminal className="h-6 w-6 text-indigo-500" />
           <span className="font-bold tracking-wider text-zinc-100 uppercase">
-            Shadow<span className="text-indigo-500">Me</span> <span className="text-xs text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded ml-2 font-mono">EXPERT</span>
+            Appr<span className="text-indigo-500">ent</span> <span className="text-xs text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded ml-2 font-mono">EXPERT</span>
           </span>
         </div>
         <div className="flex items-center gap-4">
@@ -255,7 +260,7 @@ export default function ExpertDashboard() {
                 <div className="p-4 mt-4 bg-violet-950/20 border border-violet-900/60 rounded-lg space-y-2">
                   <div className="text-sm font-semibold text-violet-200">Broadcast Connection Ingestion Details:</div>
                   <div className="text-xs font-mono text-zinc-400">
-                    <p><strong>Server URL:</strong> rtmp://stream.shadowme.com/live</p>
+                    <p><strong>Server URL:</strong> rtmp://stream.apprent.com/live</p>
                     <p><strong>Stream Key:</strong> {showStreamKey}</p>
                   </div>
                   <p className="text-[10px] text-zinc-500">Keep this stream key secure. Use it to bind output feeds in OBS Studio or other hardware encoders.</p>
@@ -397,6 +402,15 @@ export default function ExpertDashboard() {
                   <option value="beginner">Beginner</option>
                   <option value="intermediate">Intermediate</option>
                   <option value="advanced">Advanced</option>
+                </select>
+                <select
+                  value={chLang}
+                  onChange={(e) => setChLang(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-lg p-2 text-sm"
+                >
+                  <option value="go">Go (Golang)</option>
+                  <option value="python">Python 3</option>
+                  <option value="javascript">JavaScript (Node)</option>
                 </select>
                 <textarea
                   placeholder="// Paste the template / initial code here..."
